@@ -1,0 +1,42 @@
+# 1. Secure Secret Injection
+available_secrets:
+- secret: projects/$PROJECT_ID/secrets/$GITHUB_SECRET_NAME # $GITHUB_SECRET_NAME is injected
+  env: 'GITHUB_TOKEN' 
+
+steps:
+# 2. Build and Tag Image
+- id: 'Build Image'
+  name: 'gcr.io/cloud-builders/docker'
+  args: [
+    'build',
+    '-t', '$REGION-docker.pkg.dev/$PROJECT_ID/$ARTIFACT_REPO_NAME/app:$SHORT_SHA',
+    '.'
+  ]
+
+# 3. Push Image
+- id: 'Push Image'
+  name: 'gcr.io/cloud-builders/docker'
+  args: [
+    'push',
+    '$REGION-docker.pkg.dev/$PROJECT_ID/$ARTIFACT_REPO_NAME/app:$SHORT_SHA'
+  ]
+
+# 4. GitOps Commit/Trigger (using the injected secret)
+- id: 'Update Kustomize Manifest'
+  name: 'gcr.io/cloud-builders/git'
+  entrypoint: '/bin/bash'
+  args:
+    - '-c'
+    - |
+      # Configure Git for authentication using the injected token
+      git config --global user.email "cloud-build@$PROJECT_ID.iam.gserviceaccount.com"
+      git config --global user.name "Cloud Build Bot"
+      git config --global credential.helper 'store'
+      echo "https://${GITHUB_TOKEN}:@github.com" > ~/.git-credentials
+      # Clone, Update, Commit, and Push
+      git clone $MANIFESTS_REPO # Clones the repo using authenticated credentials
+      cd gke-manifests-repo/overlays/prod
+      /builder/home/kustomize edit set image app-image=$REGION-docker.pkg.dev/$PROJECT_ID/$ARTIFACT_REPO_NAME/app:$SHORT_SHA 
+      git add .
+      git commit -m "Cloud Build deployment: Updating app to $SHORT_SHA"
+      git push origin HEAD:main
