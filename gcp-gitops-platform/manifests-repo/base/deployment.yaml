@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: microservice-app
+  labels: { app: microservice-app }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: microservice-app }
+  template:
+    metadata:
+      labels: { app: microservice-app }
+    spec:
+      containers:
+      - name: app-container
+        image: app-image # Placeholder name, resolved by Kustomize
+        ports:
+        - containerPort: 8080
